@@ -1,3 +1,6 @@
+import argparse
+import logging
+import sys
 from typing import Any, Final, Generator
 from threading import Thread
 
@@ -14,13 +17,30 @@ MIN_DOMAIN_NAME_LENGTH: Final[int] = 1
 TARGET_THREADS_TO_START: Final[int] = 15
 
 
+def _configure_logger(log_level) -> logging.Logger:
+    logger = logging.getLogger('domains')
+    logger.setLevel(log_level)
+    handler = logging.StreamHandler(sys.stdout)
+    handler.setLevel(log_level)
+    formatter = logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s')
+    handler.setFormatter(formatter)
+    logger.addHandler(handler)
+    return logger
+
+
+def _parse_args():
+    parser = argparse.ArgumentParser(description='Set logging level.')
+    parser.add_argument('--log-level', type=str, default='INFO', help='Set the logging level (DEBUG, INFO, WARNING, ERROR, CRITICAL)')
+    return parser.parse_args()
+
+
 def _fetch_active_tlds() -> list[str]:
     with requests.get(ICANN_TLD_LIST_URL) as resp:
         resp.raise_for_status()
     data_list: list[str] = resp.text.split("\n")
     accurate_of: str = data_list[0].split(",")[1][1::]
     tlds_list: list[str] = data_list[1::]
-    print(f"> {len(tlds_list)} TLDs | {accurate_of}")
+    logging.info(f"> {len(tlds_list)} TLDs | {accurate_of}")
     return resp.text.split("\n")[1::]
 
 
@@ -48,7 +68,8 @@ def _search(domain_name: str, tlds: list[str]) -> None:
         domain: str = f"{domain_name}.{tld}"
         try:
             result: dict[str, Any] = whois.whois(domain, quiet=True)
-        except Exception:
+        except Exception as e:
+            logging.debug(e)  # debug, not error, it happens too much due to private tlds
             continue
         if result.get("registrar") is None:
             continue
@@ -62,11 +83,13 @@ def main() -> None:
     tlds: list[str] = _fetch_active_tlds()
     chunk_size: int = len(tlds) // TARGET_THREADS_TO_START
     tld_chunks: list[list[str]] = list(_chunk_domains(tlds, chunk_size))
-    print(f"> Starting {len(tld_chunks)} threads searching {len(tlds)} TLDs (~{len(tlds)//len(tld_chunks)} TLDs each).")
+    logging.info(f"> Starting {len(tld_chunks)} threads searching {len(tlds)} TLDs (~{len(tlds)//len(tld_chunks)} TLDs each).")
     for idx, chunk in enumerate(tld_chunks):
         Thread(target=_search, args=(target_domain_name, chunk)).start()
-        print(f"> Started thread {idx + 1}/{len(tld_chunks)}; {len(chunk)} TLDs")
+        logging.info(f"> Started thread {idx + 1}/{len(tld_chunks)}; {len(chunk)} TLDs")
 
 
 if __name__ == "__main__":
+    args = _parse_args()
+    _configure_logger(args.log_level)
     main()
