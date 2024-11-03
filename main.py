@@ -72,8 +72,7 @@ def _search(domain_name: str, tlds: list[str]) -> None:
             logging.debug(e)  # debug, not error, it happens too much due to private tlds
             continue
         if result.get("registrar") is None:
-            continue
-        available_tlds.append(tld)
+            available_tlds.append(tld)
     formatted_tlds: str = ', '.join(available_tlds)
     print(f"{len(available_tlds)} TLD(s) available: {formatted_tlds}.")
 
